@@ -1,0 +1,40 @@
+
+# compilers and paths are defined in there
+include Makefile.h.alcyone
+
+PARTICLEUTIL = getParticleProps.o getParticleMetadata.o getTime.o
+
+CFLAGS = -I$(HDF5_PATH)/include -Wall -DH5_USE_16_API
+LDFLAGS = -L$(HDF5_PATH)/lib -lhdf5 -l hdf5_hl
+
+all: makeParticleIndex makeParticleTracks makeParticleTrackSetNugridH5 makeParticleTrackFullSetNugridH5 selectParticlesByXCoord selectParticlesSubsampledXSlice selectParticlesByRpv3 selectParticlesByRadius selectParticlesByVelmag selectParticlesByVrCyl
+
+BINS = makeParticleIndex makeParticleTracks selectParticlesByXCoord selectParticlesSubsampledXSlice selectParticlesByRpv3 selectParticlesByRadius selectParticlesByVelmag selectParticlesByVrCyl
+
+makeParticleIndex: makeParticleIndex.o
+	$(CC) -o $@ makeParticleIndex.o $(LDFLAGS)
+selectParticlesSubsampledXSlice: selectParticlesSubsampledXSlice.o
+	$(CC) -o $@ selectParticlesSubsampledXSlice.o $(LDFLAGS)
+selectParticlesByRadius: selectParticlesByRadius.o
+	$(CC) -o $@ selectParticlesByRadius.o $(LDFLAGS)
+selectParticlesByRpv3: selectParticlesByRpv3.o
+	$(CC) -o $@ selectParticlesByRpv3.o $(LDFLAGS)
+
+selectParticlesByXCoord: selectParticlesByXCoord.o $(PARTICLEUTIL) particleutil.h
+	$(CC) -o $@ selectParticlesByXCoord.o $(PARTICLEUTIL) $(LDFLAGS)
+makeParticleTracks: makeParticleTracks.o $(PARTICLEUTIL) particleutil.h
+	$(CC) -o $@ makeParticleTracks.o $(PARTICLEUTIL) $(LDFLAGS)
+makeParticleTrackSetNugridH5: makeParticleTrackSetNugridH5.o $(PARTICLEUTIL) particleutil.h
+	$(CC) -o $@ makeParticleTrackSetNugridH5.o $(PARTICLEUTIL) $(LDFLAGS)
+makeParticleTrackFullSetNugridH5: makeParticleTrackFullSetNugridH5.o $(PARTICLEUTIL) particleutil.h
+	$(CC) -o $@ makeParticleTrackFullSetNugridH5.o $(PARTICLEUTIL) $(LDFLAGS)
+selectParticlesByVelmag: selectParticlesByVelmag.o $(PARTICLEUTIL) particleutil.h
+	$(CC) -o $@ selectParticlesByVelmag.o $(PARTICLEUTIL) $(LDFLAGS)
+selectParticlesByVrCyl: selectParticlesByVrCyl.o $(PARTICLEUTIL) particleutil.h
+	$(CC) -o $@ selectParticlesByVrCyl.o $(PARTICLEUTIL) $(LDFLAGS)
+
+makeReconTrackSetNugridH5: makeReconTrackSetNugridH5.o
+	$(CC) -o $@ makeReconTrackSetNugridH5.o $(LDFLAGS)
+
+clean:
+	rm *.o $(BINS)

@@ -1,0 +1,3 @@
+CC = /usr/lib64/ccache/gcc
+
+#HDF5_PATH = usr/bin/hdf5
