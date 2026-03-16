@@ -104,8 +104,8 @@ int main( int argc, char **argv)
     fprintf(stderr,"Will process in timestep chunks of %i\n", timechunksize );
     trackdata_onetime_buf = malloc( sizeof(double) * numtracks * 3 );
     trackdata_buf = malloc( sizeof(double) * timechunksize * numtracks * 3 );
-    positions = malloc( sizeof(double) * numtracks * 2 );
-    velocities = malloc( sizeof(double) * numtracks * 2 );
+    positions = malloc( sizeof(double) * numtracks * 3 );
+    velocities = malloc( sizeof(double) * numtracks * 3 );
 
     if ( minci >= 0 ) weights = malloc( sizeof(double) * numtracks );
     trackids = malloc( sizeof(int) * numtracks );
@@ -154,14 +154,14 @@ int main( int argc, char **argv)
 
     posveldata_size[0] = numtracks;
     posveldata_size[1] = 3;  /* hard code 3d for now */
-    posveldata_dspace_id = H5Screate_simple( 3, posveldata_size, NULL );
+    posveldata_dspace_id = H5Screate_simple( 2, posveldata_size, NULL );
     initialpositions_id = H5Dcreate2( outfile_id, "initialpositions", H5T_NATIVE_DOUBLE, posveldata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
     finalpositions_id = H5Dcreate2( outfile_id, "finalpositions", H5T_NATIVE_DOUBLE, posveldata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
     finalvelocities_id = H5Dcreate2( outfile_id, "finalvelocities", H5T_NATIVE_DOUBLE, posveldata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
 
     trackdata_size[0] = numtracks * numtimes;
     trackdata_size[1] = 3;
-    trackdata_dspace_id = H5Screate_simple( 3, trackdata_size, NULL );
+    trackdata_dspace_id = H5Screate_simple( 2, trackdata_size, NULL );
     trackdata_id = H5Dcreate2( outfile_id, "trackdata", H5T_NATIVE_DOUBLE, trackdata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
 
     /* go ahead and set up trackdata memory buffer properties once */
