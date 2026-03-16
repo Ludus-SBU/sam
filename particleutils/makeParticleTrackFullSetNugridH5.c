@@ -27,7 +27,7 @@ int main( int argc, char **argv)
     long long int *trackstarts;
     hsize_t input_dataspace_dims[10], input_max_dims[10];
     int npart_thisfile, fullset, geometry;
-    int i, tagi, minci, tempi, densi, velxi, velyi, posxi, posyi;
+    int i, tagi, minci, tempi, densi, velxi, velyi, velzi, posxi, posyi, poszi;
     int ti, pi, timechunksize, timechunk, outputsize;
 
     herr_t herr;
@@ -70,21 +70,23 @@ int main( int argc, char **argv)
     /* find index of temperature, density, velx, vely, velz, posx, posy, posz */
     minci=-1;
     tempi=-1; densi=-1;
-    velxi=-1; velyi=-1;
-    posxi=-1; posyi=-1;
+    velxi=-1; velyi=-1; velzi=-1;
+    posxi=-1; posyi=-1; poszi=-1;
     i=0;
-    while ( i < nprop && ( tempi<0 || minci<0 || densi<0 || velxi<0 || velyi<0 || posxi<0 || posyi<0 ) ) {
+    while ( i < nprop && ( tempi<0 || minci<0 || densi<0 || velxi<0 || velyi<0 || velzi<0 || posxi<0 || posyi<0 || poszi<0 ) ) {
         if ( minci<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "minc", 4) == 0 ) minci = i;
         if ( tempi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "temp", 4) == 0 ) tempi = i;
         if ( densi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "dens", 4) == 0 ) densi = i;
         if ( velxi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "velx", 4) == 0 ) velxi = i;
         if ( velyi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "vely", 4) == 0 ) velyi = i;
+        if ( velzi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "velz", 4) == 0 ) velzi = i;
         if ( posxi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "posx", 4) == 0 ) posxi = i;
         if ( posyi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "posy", 4) == 0 ) posyi = i;
+        if ( poszi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "posz", 4) == 0 ) poszi = i;
         i++;
     }
     /* we can continue without minc (weights are optional) but not without any others */
-    if ( i==nprop && ( tempi<0 || densi<0 || velxi<0 || velyi<0 || posxi<0 || posyi<0 ) ) {
+    if ( i==nprop && ( tempi<0 || densi<0 || velxi<0 || velyi<0 || velzi<0 || posxi<0 || posyi<0 || poszi<0 ) ) {
         fprintf(stderr, "Did not find all property indices in particle file\n");
         exit(2);
     }
@@ -130,8 +132,8 @@ int main( int argc, char **argv)
     H5LTset_attribute_uint( outfile_id, "/", "numtracks", &unumtracks, 1);
     fullset = 1;
     H5LTset_attribute_int( outfile_id, "/", "fullset", &fullset, 1);
-    /* geometry is currently hardcoded as 2D */
-    geometry = 2;
+    /* geometry is currently hardcoded as 3D */
+    geometry = 3;
     H5LTset_attribute_int( outfile_id, "/", "geometry", &geometry, 1);
 
     /* create various datastructures that will be written to in main loop */
@@ -151,21 +153,21 @@ int main( int argc, char **argv)
     H5Dclose( trackstarts_id );
 
     posveldata_size[0] = numtracks;
-    posveldata_size[1] = 2;  /* hard code 2d for now */
-    posveldata_dspace_id = H5Screate_simple( 2, posveldata_size, NULL );
+    posveldata_size[1] = 3;  /* hard code 3d for now */
+    posveldata_dspace_id = H5Screate_simple( 3, posveldata_size, NULL );
     initialpositions_id = H5Dcreate2( outfile_id, "initialpositions", H5T_NATIVE_DOUBLE, posveldata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
     finalpositions_id = H5Dcreate2( outfile_id, "finalpositions", H5T_NATIVE_DOUBLE, posveldata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
     finalvelocities_id = H5Dcreate2( outfile_id, "finalvelocities", H5T_NATIVE_DOUBLE, posveldata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
 
     trackdata_size[0] = numtracks * numtimes;
     trackdata_size[1] = 3;
-    trackdata_dspace_id = H5Screate_simple( 2, trackdata_size, NULL );
+    trackdata_dspace_id = H5Screate_simple( 3, trackdata_size, NULL );
     trackdata_id = H5Dcreate2( outfile_id, "trackdata", H5T_NATIVE_DOUBLE, trackdata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
 
     /* go ahead and set up trackdata memory buffer properties once */
     trackdata_mem_size[0] = numtracks*timechunksize;
     trackdata_mem_size[1] = 3;
-    trackdata_mspace_id = H5Screate_simple( 2, trackdata_mem_size, NULL );
+    trackdata_mspace_id = H5Screate_simple( 3, trackdata_mem_size, NULL );
 
     timechunk = 0;
     /* now start main loop over timesteps/dumpfiles */
@@ -241,8 +243,10 @@ int main( int argc, char **argv)
               * (in which case it would just not appear in the rest of the particle dump file) */
              positions[ pi*2 ] = part_props[ i*nprop + posxi ];
              positions[ pi*2 + 1 ] = part_props[ i*nprop + posyi ];
+             positions[ pi*2 + 1 ] = part_props[ i*nprop + poszi ];
              velocities[ pi*2 ] = part_props[ i*nprop + velxi ];
              velocities[ pi*2 + 1 ] = part_props[ i*nprop + velyi ];
+             velocities[ pi*2 + 1 ] = part_props[ i*nprop + velzi ];
 
              if ( minci >= 0 ) weights[ pi ] = part_props[ i*nprop + minci ];
              
