@@ -9,8 +9,8 @@ import sys
 particlenum=100001
 dirsize=300
 
-deltav = 500e5
-maxv=4.5e9
+deltav = 500e5 #JM May need to change this
+maxv=4.5e9 #JM May need to change this
 lastparticle=particlenum
 
 print(lastparticle)
@@ -29,15 +29,15 @@ sw = sum(weights)
 weights = weights/sw
 
 numtracks = len(pf['trackids'])
-fvelr = numpy.zeros( numtracks ) # blank 1D array
-fr = numpy.zeros( numtracks ) # blank 1D array
+fvelr = numpy.zeros( numtracks ) # initializing final radial velocity array
+fr = numpy.zeros( numtracks ) # initializing final position array
 
 # determine average expansion time ( slope of v_r vs. r relation )
 
 texpinv = 0.0
 for i in range(numtracks) :
-	fr[i] = numpy.sqrt(fpos[i][0]**2+fpos[i][1]**2)
-	fvelr[i] = ( fpos[i][0]*fvel[i][0] + fpos[i][1]*fvel[i][1] ) / fr[i]
+	fr[i] = numpy.sqrt(fpos[i][0]**2 + fpos[i][1]**2 + fpos[i][2]**2)
+	fvelr[i] = ( fpos[i][0]*fvel[i][0] + fpos[i][1]*fvel[i][1] + fpos[i][2]*fvel[i][2]) / fr[i]
 	texpinv = texpinv + fvelr[i]/fr[i]
 
 texpinv = texpinv / numtracks
@@ -50,10 +50,11 @@ print('t_exp = ', texp)
 
 vgridsize = int(maxv/deltav)
 
-ejectamassdens = numpy.zeros( ( vgridsize, 2*vgridsize ) )
-ejectatemp = numpy.zeros( (vgridsize, 2*vgridsize ) )
-vx = numpy.zeros( (vgridsize, 2*vgridsize ) )
-vz = numpy.zeros( (vgridsize, 2*vgridsize ) )
+ejectamassdens = numpy.zeros( ( 2*vgridsize, 2*vgridsize, 2*vgridsize ) )
+ejectatemp = numpy.zeros( (2*vgridsize, 2*vgridsize, 2*vgridsize ) )
+vx = numpy.zeros( (2*vgridsize, 2*vgridsize, 2*vgridsize ) )
+vy = numpy.zeros( (2*vgridsize, 2*vgridsize, 2*vgridsize ) )
+vz = numpy.zeros( (2*vgridsize, 2*vgridsize, 2*vgridsize ) )
 totmass = 0.0
 
 ds = yt.load("../final_checkpoint")
@@ -62,16 +63,18 @@ ds = yt.load("../final_checkpoint")
 
 ad = ds.all_data()
 
+# Now looping over every cell on the grid
+
 for i in range( ad['dens'].size ) :
-	r = float( ad['r'][i] )
+	r = float( ad['r'][i] ) # For each iteration, we extract the position, cell-size, and velocity of the cell.
 	z = float( ad['z'][i] )
 	dr = float( ad['dr'][i] )
 	dz = float( ad['dz'][i] )
 	velr = float( ad['velx'][i] )
 	velz = float( ad['vely'][i] )
 
-	rc = numpy.sqrt( r**2 + z**2 )
-	v_rad = ( r*velr + z* velz ) / rc
+	rc = numpy.sqrt( r**2 + z**2 ) # Finding the distance from the origin
+	v_rad = ( r*velr + z* velz ) / rc # Finding the radial velocity
 
 	#if ( dr > deltav*texp ) :
 	#	print( 'deltav is %d but dr/texp is %d'%( deltav, dr/texp) )
