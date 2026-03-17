@@ -5,6 +5,7 @@
 #include "hdf5.h"
 #include "ecodes.h"
 #include "flash_structures.h"
+#include "particleutil.h"
 
 struct mem_file_index_pair {
     int mi; // index in memory array
