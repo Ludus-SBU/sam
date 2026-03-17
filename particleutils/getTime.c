@@ -19,7 +19,7 @@ double getTime(hid_t file_id) {
     
 
     /* open the scalars dataset which contains the time */
-    dataset = H5Dopen(file_id, "real scalars");
+    dataset = H5Dopen(file_id, "real scalars", H5P_DEFAULT );
 
     /* read extent of dataset (i.e. # of name/value pairs)  */
     dataspace = H5Dget_space(dataset);

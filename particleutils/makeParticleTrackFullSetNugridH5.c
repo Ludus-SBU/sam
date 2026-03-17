@@ -185,7 +185,7 @@ int main( int argc, char **argv)
          time = getTime(pfile_id);
 
          /* now open and read particle properties data for all particles in file */
-         input_dataset = H5Dopen( pfile_id, "tracer particles" );
+         input_dataset = H5Dopen( pfile_id, "tracer particles", H5P_DEFAULT );
          if ( input_dataset < 0 ) {  fprintf(stderr, "Error opening particle dataset\n"); exit(1); }
 
          input_dataspace = H5Dget_space( input_dataset );

@@ -24,7 +24,7 @@ int getParticleMetadata(hid_t file_identifier, int *npart, int *nprops_ret,
     char *part_names;
 
     /*find the number of particles and number of properties */
-    dataset = H5Dopen(file_identifier, "tracer particles");
+    dataset = H5Dopen(file_identifier, "tracer particles", H5P_DEFAULT );
     if(dataset < 0) return DATASET_OPEN_FAIL;
 
     dataspace = H5Dget_space(dataset);
@@ -47,7 +47,7 @@ int getParticleMetadata(hid_t file_identifier, int *npart, int *nprops_ret,
 
     /* retrieve particle properties names */
 
-    dataset = H5Dopen(file_identifier, "particle names");
+    dataset = H5Dopen(file_identifier, "particle names", H5P_DEFAULT );
     if(dataset < 0){
         return DATASET_OPEN_FAIL;
     }

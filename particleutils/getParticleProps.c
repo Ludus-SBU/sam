@@ -46,7 +46,7 @@ int getParticleProps(char *filename, int *indices, int npart, int nprop, double 
     if (time!=NULL) *time = getTime(file_id);
 
     /* open dataset and find number of particles */
-    dataset = H5Dopen(file_id, "tracer particles");
+    dataset = H5Dopen(file_id, "tracer particles", H5P_DEFAULT );
     if(dataset < 0){
         fprintf(stderr, "Error Opening Dataset!\n");
         return DATASET_OPEN_FAIL;
