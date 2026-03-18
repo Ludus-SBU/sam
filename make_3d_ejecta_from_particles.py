@@ -1,3 +1,5 @@
+# Josh Martin 2026 based off work by Sam Boos
+
 #needs abundance_runs, final_checkpoint, and particle_track in directory
 # script to make 2D ejecta from post-processed particle data
 #import matplotlib.pyplot as plt
@@ -32,7 +34,9 @@ numtracks = len(pf['trackids'])
 fvelr = numpy.zeros( numtracks ) # initializing final radial velocity array
 fr = numpy.zeros( numtracks ) # initializing final position array
 
-# determine average expansion time ( slope of v_r vs. r relation )
+# determine average expansion time ( slope of r vs. v_r relation )
+# said another way, texp is the average of r/v_rad over all particles.
+# texp is the homologous expansion timescale. Essentially it is how long since the explosion.
 
 texpinv = 0.0
 for i in range(numtracks) :
@@ -71,7 +75,7 @@ for i in range( ad['dens'].size ) :
 	z = float(ad['z'][i])
 	dx = float(ad['dx'][i])
 	dy = float(ad['dy'][i])
-	dz = float(ad['z'][i])
+	dz = float(ad['dz'][i])
 	velx = float(ad['velx'][i])
 	vely = float(ad['vely'][i])
 	velz = float(ad['velz'][i])
@@ -92,30 +96,50 @@ for i in range( ad['dens'].size ) :
 		# Source grid cell may be bigger than destination grid cell, so, if so, need to use source
 		# grid dx and allow for contribution more than just 4 cells
 		# If cell is smaller than target grid size, use target grid size so that smoothing is consistent
-		# with CIC used for particles
+		# with CIC (cell-in-cloud) used for particles
 		# Using source grid dv is a little off since we are using the velocity in the cell to map to the new grid
 		# instead of its spatial coordinates.  But we just use t_exp to convert the spatial extent
 		# into a velocity extent.  This won't quite match up in regions where the expansion law is
 		# not quite fit by r = v*t_exp, but it will be quite close.
-		srcdvr = max(dr/texp,deltav)
-		srcdvz = max(dz/texp,deltav)
 
-		redgelo = max( velr-0.5*srcdvr, 0.0 )
-		redgehi = velr+0.5*srcdvr
-		# might have truncated, so need to compensate when using to compute weights
-		srcdvr = redgehi-redgelo
-		zedgelo = velz-0.5*srcdvz
-		zedgehi = velz+0.5*srcdvz
-		mingridi = min( vgridsize, max( 0, int( numpy.floor( redgelo/deltav ) ) ) )
-		maxgridi = min( vgridsize-1, max( -1, int( numpy.floor( redgehi/deltav ) ) ) )
-		mingridj = min( 2*vgridsize, max( 0, int( numpy.floor( zedgelo/deltav+vgridsize ) ) ) )
-		maxgridj = min( 2*vgridsize-1, max( -1, int( numpy.floor( zedgehi/deltav+vgridsize ) ) ) )
+		# Finding the velocity-width of a cell
+		srcdvx = max(dx/texp, deltav)
+		srcdvy = max(dy/texp, deltav)
+		srcdvz = max(dz/texp, deltav)
+
+		# Calculating the range of velocities of a cell
+		xedgelo = velx - 0.5*srcdvx
+		xedgehi = velx + 0.5*srcdvx
+		yedgelo = vely - 0.5*srcdvy
+		yedgehi = vely + 0.5*srcdvy
+		zedgelo = velz - 0.5*srcdvz
+		zedgehi = velz + 0.5*srcdvz
+
+		# Finding the index for the velocity cell that the each of the velocity bounds belong too
+		# Explaining each part
+		# mingridi = min( 2*vgridsize,     ## The maximum grid index is at 2*vgridsize - 1, so any velocities larger than vmax will
+										   ## have index 2*vgridsize and will be skipped over in the next loop.
+		# max( 0,                          ## this is the lowest possible index which is the left edge of a given axis
+		# int( numpy.floor( xedgelo/deltav ## using floor to get an integer value and xedgelo/deltav is the
+										   ## index of the lowest velocity in a cell
+		# +vgridsize ) ) ) )               ## vgridsize is the index of "halfway" so adding by vgridsize will
+										   ## place a velocity of 0 in the central velocity bin.
+		mingridi = min( 2*vgridsize, max( 0, int( numpy.floor( xedgelo/deltav+vgridsize ) ) ) )
+		maxgridi = min( 2*vgridsize-1, max( -1, int( numpy.floor( xedgehi/deltav+vgridsize ) ) ) )
+		mingridj = min( 2*vgridsize, max( 0, int( numpy.floor( yedgelo/deltav+vgridsize ) ) ) )
+		maxgridj = min( 2*vgridsize-1, max( -1, int( numpy.floor( yedgehi/deltav+vgridsize ) ) ) )
+		mingridk = min( 2*vgridsize, max( 0, int( numpy.floor( zedgelo/deltav+vgridsize ) ) ) )
+		maxgridk = min( 2*vgridsize-1, max( -1, int( numpy.floor( zedgehi/deltav+vgridsize ) ) ) )
 		
 		for gridi in range( mingridi, maxgridi+1) :
 			for gridj in range( mingridj, maxgridj+1) :
-				weight = ( min( redgehi, (gridi+1)*deltav ) - max( redgelo, gridi*deltav ) ) * ( min( zedgehi, (gridj-vgridsize+1)*deltav ) - max( zedgelo, (gridj-vgridsize)*deltav ) ) / srcdvr / srcdvz
-				ejectamassdens[gridi,gridj] += weight * mass
-				ejectatemp[gridi,gridj] += weight * mass * float(ad['temperature'][i])
+				for gridk in range(mingridk, maxgridk+1) :
+					# algorithm for weights:
+					# we find the overlap length along each axis and multiply them, then divide by the bin widths to normalize
+					# basic idea: [min(redgehi, right edge of bin) - max(redgelo, left edge of bin)] / bin_width
+					weight = ( min( xedgehi, (gridi-vgridsize+1)*deltav ) - max( xedgelo, (gridi-vgridsize)*deltav ) ) * ( min( yedgehi, (gridj-vgridsize+1)*deltav ) - max( yedgelo, (gridj-vgridsize)*deltav ) ) * ( min( zedgehi, (gridk-vgridsize+1)*deltav ) - max( zedgelo, (gridk-vgridsize)*deltav ) ) / srcdvx / srcdvy / srcdvz
+					ejectamassdens[gridi,gridj,gridk] += weight * mass
+					ejectatemp[gridi,gridj,gridk] += weight * mass * float(ad['temperature'][i])
 
 del ad
 del ds
