@@ -66,23 +66,27 @@ ad = ds.all_data()
 # Now looping over every cell on the grid
 
 for i in range( ad['dens'].size ) :
-	r = float( ad['r'][i] ) # For each iteration, we extract the position, cell-size, and velocity of the cell.
-	z = float( ad['z'][i] )
-	dr = float( ad['dr'][i] )
-	dz = float( ad['dz'][i] )
-	velr = float( ad['velx'][i] )
-	velz = float( ad['vely'][i] )
+	x = float(ad['x'[i]]) # For each iteration, we extract the position, cell-size, and velocity of the cell.
+	y = float(ad['y'][i])
+	z = float(ad['z'][i])
+	dx = float(ad['dx'][i])
+	dy = float(ad['dy'][i])
+	dz = float(ad['z'][i])
+	velx = float(ad['velx'][i])
+	vely = float(ad['vely'][i])
+	velz = float(ad['velz'][i])
 
-	rc = numpy.sqrt( r**2 + z**2 ) # Finding the distance from the origin
-	v_rad = ( r*velr + z* velz ) / rc # Finding the radial velocity
+	r = numpy.sqrt( x**2 + y**2 + z**2 ) # Finding the distance from the origin
+	v_rad = ( x*velx + y*vely + z*velz ) / r # Finding the radial velocity (this is a projection formula,
+	# not sqrt of the sum of the squares because we want speed along the radial direction NOT overall speed)
 
 	#if ( dr > deltav*texp ) :
 	#	print( 'deltav is %d but dr/texp is %d'%( deltav, dr/texp) )
 	#	print( '(vr,vz) =  ( %d, %d )'%(velr,velz) )
 
-	# only include data not reverse-shocked, with v_rad not too far below v=r/texp
-	if ( v_rad > ( rc/texp - 5e7 ) and float(ad['flff'][i]) < 0.01 ) :
-		mass = float( ad['density'][i] ) * 2*numpy.pi*r*dr*dz
+	# only include ejected material w/ sufficiently low fluff mass fraction.
+	if ( float(ad['ener'][i]) - float (ad['eint'][i]) + float(ad['gpot'][i]) > 0 and float(ad['flff'][i]) < 0.01 ) :
+		mass = float( ad['density'][i] ) * dx * dy * dz
 		totmass += mass
 
 		# Source grid cell may be bigger than destination grid cell, so, if so, need to use source
