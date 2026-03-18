@@ -68,6 +68,8 @@ ds = yt.load("../final_checkpoint")
 ad = ds.all_data()
 
 # Now looping over every cell on the grid
+# This for loop cuts out the bound remnant and the fluff material from our data
+# and then sorts the remaining ejecta into velocity bins.
 
 for i in range( ad['dens'].size ) :
 	x = float(ad['x'[i]]) # For each iteration, we extract the position, cell-size, and velocity of the cell.
@@ -146,27 +148,43 @@ del ds
 avgdens = totmass / ( 4.0/3.0*numpy.pi*maxv**3*texp**3 )
 print( 'avgdens = ', avgdens )
 # now convert mass in each bin to density.  trimming to spherical
-for i in range(vgridsize) :
+for i in range(2*vgridsize) :
 	for j in range(2*vgridsize) :
-		vx[i,j] = (i+1)*deltav
-		vz[i,j] = (j-vgridsize+1)*deltav
-		# trim to be spherical, since it is cut in r an z directions by grid
-#		if ( numpy.sqrt( (i+0.5)**2 + (j-vgridsize+0.5)**2) > vgridsize  or  ejectamassdens[i,j] == 0.0 ) :
-		if ( ejectamassdens[i,j] == 0.0 ) :
-			ejectamassdens[i,j] = avgdens*1e-20
-			ejectatemp[i,j] = 100.0
-		else :
-			ejectatemp[i,j] = ejectatemp[i,j]/ejectamassdens[i,j]
-			ejectamassdens[i,j] = ejectamassdens[i,j] / ( 2*numpy.pi*(i+0.5)*deltav**3*texp**3 )
+		for k in range(2*vgridsize) :
+			# Storing the velocity values that represent each velocity grid-cell.
+			vx[i,j,k] = (i-vgridsize+1)*deltav # Doing -vgridsize+1 allows us to have our negative 
+											   # velocity values since vgridsize is the "halfway" index.
+			vy[i,j,k] = (j-vgridsize+1)*deltav
+			vz[i,j,k] = (k-vgridsize+1)*deltav
+
+			# JM - If code is bugging, may need to deal with this
+			# trim to be spherical, since it is cut in r an z directions by grid
+			# if ( numpy.sqrt( (i+0.5)**2 + (j-vgridsize+0.5)**2) > vgridsize  or  ejectamassdens[i,j] == 0.0 ) :
+			
+			# Filling empty bins with negligible density and temperature so downstream code never deals
+			# with "truly zero" values.
+			if ( ejectamassdens[i,j,k] == 0.0 ) :
+				ejectamassdens[i,j,k] = avgdens*1e-20
+				ejectatemp[i,j,k] = 100.0
+			else :
+				# If the bin has mass, we get the true temperature of the bin by dividing off the mass
+				# since we initially found the temperature density of the bin by weighting each initial cell
+				# according to the mass of a cell that had a specific velocity. Now we are just getting
+				# dividing off the total mass.
+				ejectatemp[i,j,k] = ejectatemp[i,j,k]/ejectamassdens[i,j,k]
+				# ejectamassdens was also accumulated as total mass per bin so if we want density
+				# we need to divide by the volume of each velocty bin
+				ejectamassdens[i,j,k] = ejectamassdens[i,j,k] / ( deltav**3*texp**3 )
 
 
 fout = h5py.File('ejecta.hdf5', 'w')
 fout.create_dataset( 'rho', data=ejectamassdens, dtype='d' )
 fout.create_dataset( 'temp', data=ejectatemp, dtype='d' )
 fout.create_dataset( 'vx', data=vx, dtype='d' )
+fout.create_dataset( 'vy', data=vy, dtype='d' )
 fout.create_dataset( 'vz', data=vz, dtype='d' )
 fout.create_dataset( 'erad', data=ejectatemp, dtype='d' )
-fout.create_dataset( 'dr', data=[deltav*texp,deltav*texp], dtype='d')
+fout.create_dataset( 'dr', data=[deltav*texp, deltav*texp, deltav*texp], dtype='d')
 fout.create_dataset( 'time', data=[texp], dtype='d')
 
 print('finished density and temperature')
