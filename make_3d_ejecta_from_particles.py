@@ -25,6 +25,7 @@ fpos = pf['finalpositions'][:]
 fvel = pf['finalvelocities'][:]
 leftgrid = pf['leftgrid'][:]
 weights = pf['weights'][:]
+fgpot = pf['gpot'][:]
 
 # normalize weights
 sw = sum(weights)
@@ -210,8 +211,8 @@ for line in yfile :
 	i+=1
 yfile.close()
 
-ejectaabund = numpy.zeros( ( vgridsize, 2*vgridsize, nnuc ) )
-weightaccum = numpy.zeros( ( vgridsize, 2*vgridsize ) )
+ejectaabund = numpy.zeros( ( 2*vgridsize, 2*vgridsize, 2*vgridsize, nnuc ) )
+weightaccum = numpy.zeros( ( 2*vgridsize, 2*vgridsize, 2*vgridsize ) )
 
 for di in range(len(dirs)) :
 
@@ -225,8 +226,8 @@ for di in range(len(dirs)) :
 		if ( leftgrid[pid-1] > 0 ) :
 			print ('skipping particle that left grid ', pindex, ' at vel ', v_rad)
 			continue
-		# skip if too far below the v = r/texp line  (in reverse shock from interaction with fluff)
-		if ( fvelr[pid-1] <= ( fr[pid-1]/texp-5e7 ) ) :
+		# skip if E_kin + E_grav <= 0
+		if ( 0.5*(fvel[pid-1][0]**2 + fvel[pid-1][1]**2 + fvel[pid-1][2]**2) + fgpot[pid-1] <= 0 ):
 			continue
 		
 		# locate destination on grid
@@ -235,15 +236,18 @@ for di in range(len(dirs)) :
 		# but may be -1 indicating particle is in lower half of cell
 		velx = fvel[int(pids[pindex]-1)][0]
 		vely = fvel[int(pids[pindex]-1)][1]
+		velz = fvel[int(pids[pindex]-1)][2]
 		#velx = fpos[int(pids[pindex])][0] / texp
 		#vely = fpos[int(pids[pindex])][1] / texp
 		#print 'velx=', velx, ' vely=',vely
-		gridi = int( numpy.floor( (velx/deltav)-0.5 ) )
-		gridj = int( numpy.floor( ((vely+maxv)/deltav)-0.5 ) )
+		gridi = int( numpy.floor( ((velx+maxv)/deltav)- 0.5 ) )
+		gridj = int( numpy.floor( ((vely+maxv)/deltav)- 0.5 ) )
+		gridk = int( numpy.floor( ((velz+maxv)/deltav)- 0.5 ) )
 		#print 'gridi gridj: ', gridi, gridj
 		# weight factors for cloud in cell
-		lowweighti = velx/deltav -0.5 - gridi
-		lowweightj = (vely+maxv)/deltav -0.5 - gridj
+		lowweighti = (velx+maxv)/deltav - 0.5 - gridi
+		lowweightj = (vely+maxv)/deltav - 0.5 - gridj
+		lowweightk = (velz+maxv)/deltav - 0.5 - gridk
 
 		try: 
 			# now read the track yield data
@@ -263,25 +267,47 @@ for di in range(len(dirs)) :
 		
 			# now add portion to grid cells : i.e. cloud-in-cell
 	
-			if ( gridi >= 0 and gridi < vgridsize and gridj >= 0 and gridj < 2*vgridsize):
-				weightaccum[gridi,gridj] += weights[pid-1]*lowweighti*lowweightj
+			# for the starting cell - let's call it (0,0,0)
+			if ( gridi >= 0 and gridi < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
+				weightaccum[gridi,gridj,gridk] += weights[pid-1]*lowweighti*lowweightj*lowweightk
 				for ni in range(nnuc) :
-					ejectaabund[gridi,gridj,ni] += weights[pid-1]*lowweighti*lowweightj * py[ (nucZ[ni],nucA[ni]) ]
-			if ( gridi+1 >= 0 and gridi+1 < vgridsize and gridj >= 0 and gridj < 2*vgridsize ):
-				weightaccum[gridi+1,gridj] += weights[pid-1]*(1.0-lowweighti)*lowweightj
+					ejectaabund[gridi,gridj,gridk,ni] += weights[pid-1]*lowweighti*lowweightj*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (1,0,0)
+			if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
+				weightaccum[gridi+1,gridj,gridk] += weights[pid-1]*(1.0-lowweighti)*lowweightj*lowweightk
 				for ni in range(nnuc) :
-					ejectaabund[gridi+1,gridj,ni] += weights[pid-1]*(1.0-lowweighti)*lowweightj * py[ (nucZ[ni],nucA[ni]) ]
-			if ( gridi >= 0 and gridi < vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize ):
-				weightaccum[gridi,gridj+1] += weights[pid-1]*lowweighti*(1.0-lowweightj)
+					ejectaabund[gridi+1,gridj,gridk,ni] += weights[pid-1]*(1.0-lowweighti)*lowweightj*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (0,1,0)
+			if ( gridi >= 0 and gridi < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
+				weightaccum[gridi,gridj+1,gridk] += weights[pid-1]*lowweighti*(1.0-lowweightj)*lowweightk
 				for ni in range(nnuc) :
-					ejectaabund[gridi,gridj+1,ni] += weights[pid-1]*lowweighti*(1.0-lowweightj) * py[ (nucZ[ni],nucA[ni]) ]
-			if ( gridi+1 >= 0 and gridi+1 < vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize ):
-				weightaccum[gridi+1,gridj+1] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)
+					ejectaabund[gridi,gridj+1,gridk,ni] += weights[pid-1]*lowweighti*(1.0-lowweightj)*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (0,0,1)
+			if ( gridi >= 0 and gridi < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
+				weightaccum[gridi,gridj,gridk+1] += weights[pid-1]*lowweighti*lowweightj*(1.0-lowweightk)
 				for ni in range(nnuc) :
-					ejectaabund[gridi+1,gridj+1,ni] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj) * py[ (nucZ[ni],nucA[ni]) ]
+					ejectaabund[gridi,gridj,gridk+1,ni] += weights[pid-1]*lowweighti*lowweightj*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (1,1,0)
+			if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
+				weightaccum[gridi+1,gridj+1,gridk] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*lowweightk
+				for ni in range(nnuc) :
+					ejectaabund[gridi+1,gridj+1,gridk,ni] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (0,1,1)
+			if ( gridi >= 0 and gridi < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
+				weightaccum[gridi,gridj+1,gridk+1] += weights[pid-1]*lowweighti*(1.0-lowweightj)*(1.0-lowweightk)
+				for ni in range(nnuc) :
+					ejectaabund[gridi,gridj+1,gridk+1,ni] += weights[pid-1]*lowweighti*(1.0-lowweightj)*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (1,0,1)
+			if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
+				weightaccum[gridi+1,gridj,gridk+1] += weights[pid-1]*(1.0-lowweighti)*lowweightj*(1.0-lowweightk)
+				for ni in range(nnuc) :
+					ejectaabund[gridi+1,gridj,gridk+1,ni] += weights[pid-1]*(1.0-lowweighti)*lowweightj*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (1,1,1)
+			if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
+				weightaccum[gridi+1,gridj+1,gridk+1] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*(1.0-lowweightk)
+				for ni in range(nnuc) :
+					ejectaabund[gridi+1,gridj+1,gridk+1,ni] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
 			
-
-
 	print("finished dir ", dirs[di])
 
 
