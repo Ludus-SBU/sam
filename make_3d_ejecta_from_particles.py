@@ -312,14 +312,15 @@ for di in range(len(dirs)) :
 
 
 # now complete averaging
-for i in range(vgridsize) :
+for i in range(2*vgridsize) :
 	for j in range(2*vgridsize) :
-		if ( weightaccum[i,j] > 0.0 ) :
-			for ni in range(nnuc) :
-				ejectaabund[i,j,ni] = ejectaabund[i,j,ni] / weightaccum[i,j]
-		else :
-			# pure he
-			ejectaabund[i,j,4] = 1.0
+		for k in range(2*vgridsize) :
+			if ( weightaccum[i,j,k] > 0.0 ) :
+				for ni in range(nnuc) :
+					ejectaabund[i,j,k,ni] = ejectaabund[i,j,k,ni] / weightaccum[i,j,k]
+			else :
+				# pure he
+				ejectaabund[i,j,k,4] = 1.0
 
 
 # fill cells with missing abundances (ones that didn't have a particle in them)
