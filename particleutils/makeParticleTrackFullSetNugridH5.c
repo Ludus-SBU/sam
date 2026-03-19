@@ -25,10 +25,11 @@ int main( int argc, char **argv)
     int *trackids;
     unsigned int *tracklengths, *leftgrid;
     long long int *trackstarts;
+    double *gpot;
     hsize_t input_dataspace_dims[10], input_max_dims[10];
     int npart_thisfile, fullset, geometry;
     int i, tagi, minci, tempi, densi, velxi, velyi, velzi, posxi, posyi, poszi;
-    int ti, pi, timechunksize, timechunk, outputsize;
+    int ti, pi, timechunksize, timechunk, outputsize, gpoti;
 
     herr_t herr;
     hsize_t part_props_mem_size[2];
@@ -44,6 +45,7 @@ int main( int argc, char **argv)
     hsize_t trackdata_mem_size[2], trackdata_start[2], trackdata_stride[2], trackdata_count[2], trackdata_block[2];
     hsize_t trackdata_mem_start[2], trackdata_mem_stride[2];
     hid_t trackdata_mspace_id; 
+    hid_t gpot_id;
 
     if ( argc < 5 ) {
         fprintf(stderr,"Utility for creating full particle set from flash simulation for nugrid post-processing\n");
@@ -67,13 +69,14 @@ int main( int argc, char **argv)
 
     fprintf(stderr, "Processing %i particle tracks\n", numtracks );
 
-    /* find index of temperature, density, velx, vely, velz, posx, posy, posz */
+    /* find index of temperature, density, velx, vely, velz, posx, posy, posz, gpot */
     minci=-1;
     tempi=-1; densi=-1;
     velxi=-1; velyi=-1; velzi=-1;
     posxi=-1; posyi=-1; poszi=-1;
+    gpoti=-1;
     i=0;
-    while ( i < nprop && ( tempi<0 || minci<0 || densi<0 || velxi<0 || velyi<0 || velzi<0 || posxi<0 || posyi<0 || poszi<0 ) ) {
+    while ( i < nprop && ( tempi<0 || minci<0 || densi<0 || velxi<0 || velyi<0 || velzi<0 || posxi<0 || posyi<0 || poszi<0 || gpoti<0) ) {
         if ( minci<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "minc", 4) == 0 ) minci = i;
         if ( tempi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "temp", 4) == 0 ) tempi = i;
         if ( densi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "dens", 4) == 0 ) densi = i;
@@ -83,10 +86,11 @@ int main( int argc, char **argv)
         if ( posxi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "posx", 4) == 0 ) posxi = i;
         if ( posyi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "posy", 4) == 0 ) posyi = i;
         if ( poszi<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "posz", 4) == 0 ) poszi = i;
+        if ( gpoti<0 && strncmp( (prop_names+PROP_STRING_SIZE*i), "gpot", 4) == 0 ) gpoti = i;
         i++;
     }
     /* we can continue without minc (weights are optional) but not without any others */
-    if ( i==nprop && ( tempi<0 || densi<0 || velxi<0 || velyi<0 || velzi<0 || posxi<0 || posyi<0 || poszi<0 ) ) {
+    if ( i==nprop && ( tempi<0 || densi<0 || velxi<0 || velyi<0 || velzi<0 || posxi<0 || posyi<0 || poszi<0 || gpoti<0) ) {
         fprintf(stderr, "Did not find all property indices in particle file\n");
         exit(2);
     }
@@ -106,6 +110,7 @@ int main( int argc, char **argv)
     trackdata_buf = malloc( sizeof(double) * timechunksize * numtracks * 3 );
     positions = malloc( sizeof(double) * numtracks * 3 );
     velocities = malloc( sizeof(double) * numtracks * 3 );
+    gpot = malloc( sizeof(double) * numtracks );
 
     if ( minci >= 0 ) weights = malloc( sizeof(double) * numtracks );
     trackids = malloc( sizeof(int) * numtracks );
@@ -144,6 +149,7 @@ int main( int argc, char **argv)
     tracklengths_id = H5Dcreate2( outfile_id, "tracklengths", H5T_NATIVE_UINT32, pertrackdata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
     trackstarts_id = H5Dcreate2( outfile_id, "trackstarts", H5T_NATIVE_UINT64, pertrackdata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
     leftgrid_id = H5Dcreate2( outfile_id, "leftgrid", H5T_NATIVE_UINT32, pertrackdata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
+    gpot_id = H5Dcreate2( outfile_id, "gpot", H5T_NATIVE_DOUBLE, pertrackdata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
     if ( minci >= 0 ) weights_id = H5Dcreate2( outfile_id, "weights", H5T_NATIVE_DOUBLE, pertrackdata_dspace_id, H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT );
 
     /* actually can go ahead and write these */
@@ -247,6 +253,7 @@ int main( int argc, char **argv)
              velocities[ pi*3 ] = part_props[ i*nprop + velxi ];
              velocities[ pi*3 + 1 ] = part_props[ i*nprop + velyi ];
              velocities[ pi*3 + 2 ] = part_props[ i*nprop + velzi ];
+             gpot[pi] = part_props[i*nprop + gpoti];
 
              if ( minci >= 0 ) weights[ pi ] = part_props[ i*nprop + minci ];
              
@@ -322,6 +329,8 @@ int main( int argc, char **argv)
     H5Dclose( finalpositions_id );
     H5Dwrite( finalvelocities_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, velocities );
     H5Dclose( finalvelocities_id );
+    H5Dwrite( gpot_id, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, gpot );
+    H5Dclose( gpot_id );
 
     H5Fclose( outfile_id );
 
