@@ -241,12 +241,12 @@ int main( int argc, char **argv)
              leftgrid[ pi ] = fileindex - lowfi + 1;
              /* need to similarly accumulate position and velocity, since we don't know when a particle might leave grid
               * (in which case it would just not appear in the rest of the particle dump file) */
-             positions[ pi*2 ] = part_props[ i*nprop + posxi ];
-             positions[ pi*2 + 1 ] = part_props[ i*nprop + posyi ];
-             positions[ pi*2 + 1 ] = part_props[ i*nprop + poszi ];
-             velocities[ pi*2 ] = part_props[ i*nprop + velxi ];
-             velocities[ pi*2 + 1 ] = part_props[ i*nprop + velyi ];
-             velocities[ pi*2 + 1 ] = part_props[ i*nprop + velzi ];
+             positions[ pi*3 ] = part_props[ i*nprop + posxi ];
+             positions[ pi*3 + 1 ] = part_props[ i*nprop + posyi ];
+             positions[ pi*3 + 2 ] = part_props[ i*nprop + poszi ];
+             velocities[ pi*3 ] = part_props[ i*nprop + velxi ];
+             velocities[ pi*3 + 1 ] = part_props[ i*nprop + velyi ];
+             velocities[ pi*3 + 2 ] = part_props[ i*nprop + velzi ];
 
              if ( minci >= 0 ) weights[ pi ] = part_props[ i*nprop + minci ];
              
