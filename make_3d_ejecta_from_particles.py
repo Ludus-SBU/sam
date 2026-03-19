@@ -73,19 +73,13 @@ ad = ds.all_data()
 # and then sorts the remaining ejecta into velocity bins.
 
 for i in range( ad['dens'].size ) :
-	x = float(ad['x'[i]]) # For each iteration, we extract the position, cell-size, and velocity of the cell.
-	y = float(ad['y'][i])
-	z = float(ad['z'][i])
+	# For each iteration, we extract the cell-size and velocity of the cell.
 	dx = float(ad['dx'][i])
 	dy = float(ad['dy'][i])
 	dz = float(ad['dz'][i])
 	velx = float(ad['velx'][i])
 	vely = float(ad['vely'][i])
 	velz = float(ad['velz'][i])
-
-	r = numpy.sqrt( x**2 + y**2 + z**2 ) # Finding the distance from the origin
-	v_rad = ( x*velx + y*vely + z*velz ) / r # Finding the radial velocity (this is a projection formula,
-	# not sqrt of the sum of the squares because we want speed along the radial direction NOT overall speed)
 
 	#if ( dr > deltav*texp ) :
 	#	print( 'deltav is %d but dr/texp is %d'%( deltav, dr/texp) )
@@ -224,7 +218,7 @@ for di in range(len(dirs)) :
 
 		pid = int(pids[pindex])
 		if ( leftgrid[pid-1] > 0 ) :
-			print ('skipping particle that left grid ', pindex, ' at vel ', v_rad)
+			print ('skipping particle that left grid ', pindex, ' at vel ', fvelr[pid-1])
 			continue
 		# skip if E_kin + E_grav <= 0
 		if ( 0.5*(fvel[pid-1][0]**2 + fvel[pid-1][1]**2 + fvel[pid-1][2]**2) + fgpot[pid-1] <= 0 ):
@@ -323,67 +317,77 @@ for i in range(2*vgridsize) :
 				ejectaabund[i,j,k,4] = 1.0
 
 
-# fill cells with missing abundances (ones that didn't have a particle in them)
-# strategy: Find nearest cells with data and average them.
-#           All cells in a 1-cell width band are included in average.
-#           Done by incrementing out in 1-cell stages to find nearest cells.
-#           Note if all 4 neighbor cells have data, this is just interpolation.
-#           For cells outside main region, this leads effectively to "constant" extrapolation
-#            based on furthest out data in that direction.
+# Fill cells with missing abundances (ones that didn't have a particle in them)
 
-# extents arrays hold number of cells away from row with same j index as cell being filled
-# max (cell-index) radius is corner-to-corner of 1x2*vgridsize grid
-oldextents = numpy.zeros(3*vgridsize)
-newextents = numpy.zeros(3*vgridsize)
-for i in range(vgridsize) :
+# Strategy: I'm going to be very thorough with this description because writing this out
+#           helped me dramatically lol.
+
+# This code searches for cells in velocity space that have mass via the fluid loop, but do not
+# have particle tracks that end there. The issue with not having particle tracks is that the cell
+# will not have abundances, so we find and then fill these cells with interpolated abundances.
+
+# We first check if the particle track has ended in a cell by seeing if we gave the cell any
+# particle weight. If the cell doesn't have any particle weight, but does have some ejecta mass
+# density, we then use the rest of the algorithm to fill the cell with interpolated abundances.
+
+# This is done by creating a "foundcells" list which holds the cell indices for non-zero particle
+# weight cells. A while loop is started where the condition for continuance is that we haven't
+# found any non-zero particle weight cells and therefore len(foundcells < 1).
+
+# We start by incrementing the radius and then iterating over a box with dimensions of -radius
+# to +radius. In this box we check if a given cell is located in the spherical shell we want to
+# examine. This is accomplished by first making sure that our cell's location is at a radius
+# which is not outside the radius of the spherical shell plus a small amount 1e-6 (which is a
+# small tolerance we introduce).
+
+# If the cell passes this test, we then makes sure that the radius of the cell is not smaller
+# than or equal to the radius of the previous spherical shell (again plus some small tolerance).
+
+# After passing both of these tests, we conclude that the cell is within our spherical shell and
+# we finally make sure the cell is within our domain and that it has a particle weight that is
+# greater than zero. If this is true, we append the particle weights to foundcells.
+
+# As we break from the loop, we reset the ejecta abundances of the cell to zero since they were
+# initially set to pure helium as a placeholder and then we loop over each element in nnuc and
+# average the abundances of that element over all cells in our spherical shell.
+
+
+for i in range(2*vgridsize) :
 	for j in range(2*vgridsize) :
-		if ( ( weightaccum[i,j] == 0.0 ) and ( ejectamassdens[i,j] > 1.01*avgdens*1e-20) ) :
-			# need to fill
-
-			# search for valid data
-			oldextents[:] = -1
-			newextents[:] = -1
-			newextents[0] = 0
-			foundcells = list()
-			radius = 0
-			# increment extents  and search cells at this radius
-			while ( len(foundcells) < 1 ):
-				# increment extents array
-				oldextents[:] = newextents[:]
-				radius = radius+1
-				newextents[radius]=0
-				for ri in range(radius):
-					ei = oldextents[ri]
-					while ( ri*ri + (ei+1)*(ei+1) < radius*radius + 1e-6 ):
-						ei=ei+1
-					newextents[ri] = ei
-				# search at this radius
-				for ri in range(radius+1):
-					for ei in range(int(oldextents[ri]+1), int(newextents[ri]+1)):
-						if (ri>0) :
-							isignrange = [-1,+1]
-						else :
-							isignrange = [1]
-						if (ei>0) :
-							jsignrange = [-1,+1]
-						else :
-							jsignrange = [1]
-						for isign in isignrange :
-							for jsign in jsignrange :
-								iref = int(i+isign*ri)
-								jref = int(j+jsign*ei)
+		for k in range(2*vgridsize) :
+			# now searching for if we have a cell with mass that doesn't have a particle track
+			# if this is true, we need to fill the cell via interpolation
+			if ( ( weightaccum[i,j,k] == 0.0 ) and ( ejectamassdens[i,j,k] > 1.01*avgdens*1e-20) ) :
+				foundcells = list()
+				radius = 0
+				# if we haven't found any cells that have particle tracks, we keep iterating
+				# by incrementing the radius
+				while ( len(foundcells) < 1 ):
+					radius = radius+1
+					for ri in range(-radius, radius+1):
+						for rj in range(-radius, radius+1):
+							for rk in range(-radius, radius+1):
+								# check if within spherical shell at this radius
+								if ( ri*ri + rj*rj + rk*rk > radius*radius + 1e-6 ):
+									continue
+								# check if outside previous radius (shell only)
+								if ( ri*ri + rj*rj + rk*rk <= (radius-1)**2 + 1e-6 ):
+									continue
+								iref = i + ri
+								jref = j + rj
+								kref = k + rk
 								# only check if inside domain
-								if ( (iref>-1) and (iref<vgridsize) and (jref>-1) and (jref<2*vgridsize) ) :
-									if ( weightaccum[iref,jref] > 0.0 ) :
-										foundcells.append( (iref,jref) )
-			# average cells found
-			# had set everything without particle weight to He, undo that
-			ejectaabund[i,j,4] = 0.0
-			# now for every nuclide
-			w = 1.0/len(foundcells)
-			for ni in range(nnuc) :
-				for cell in foundcells :
-					ejectaabund[i,j,ni] += w*ejectaabund[cell[0],cell[1],ni]
+								if ( (iref>-1) and (iref<2*vgridsize) and (jref>-1) and (jref<2*vgridsize) and (kref>-1) and (kref<2*vgridsize) ):
+									if ( weightaccum[iref,jref,kref] > 0.0 ):
+										foundcells.append( (iref,jref,kref) )
+				# average cells found
+				# had set everything without particle weight to He, undo that
+				ejectaabund[i,j,k,4] = 0.0
+				# now for every nuclide
+				w = 1.0/len(foundcells)
+				for ni in range(nnuc) :
+					for cell in foundcells :
+						ejectaabund[i,j,k,ni] += w*ejectaabund[cell[0],cell[1],cell[2],ni]
 			
 
 #fout = h5py.File('trial_output.hdf5', 'w')
