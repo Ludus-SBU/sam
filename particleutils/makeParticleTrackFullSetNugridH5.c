@@ -170,7 +170,7 @@ int main( int argc, char **argv)
     /* go ahead and set up trackdata memory buffer properties once */
     trackdata_mem_size[0] = numtracks*timechunksize;
     trackdata_mem_size[1] = 3;
-    trackdata_mspace_id = H5Screate_simple( 3, trackdata_mem_size, NULL );
+    trackdata_mspace_id = H5Screate_simple( 2, trackdata_mem_size, NULL );
 
     timechunk = 0;
     /* now start main loop over timesteps/dumpfiles */
