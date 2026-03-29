@@ -17,7 +17,7 @@ print(lastparticle)
 print(dirsize)
 # get final positions and velocities for all tracks
 
-pf = h5py.File("../tracks.hdf5")
+pf = h5py.File("alltracks_2D.hdf5")
 
 fpos = pf['finalpositions'][:]
 fvel = pf['finalvelocities'][:]
@@ -56,11 +56,19 @@ vx = numpy.zeros( (vgridsize, 2*vgridsize ) )
 vz = numpy.zeros( (vgridsize, 2*vgridsize ) )
 totmass = 0.0
 
-ds = yt.load("../final_checkpoint")
+ds = yt.load("../final_checkpoint") #JM
 
 #print( dir(ds.fields.gas) )
 
 ad = ds.all_data()
+
+# Adding the cell centers, widths, and potential energies to later
+# be used in the particle cut
+cell_centers_r = []
+cell_centers_z = []
+cell_gpot_list = []
+cell_dr = []
+cell_dz = []
 
 for i in range( ad['dens'].size ) :
 	r = float( ad['r'][i] )
@@ -70,6 +78,14 @@ for i in range( ad['dens'].size ) :
 	velr = float( ad['velx'][i] )
 	velz = float( ad['vely'][i] )
 
+	# Creating arrays for the cell coords, widths, and gpot to be accessed later
+	# when using the cell gpot for the particle cut.
+	cell_centers_r.append(r)
+	cell_centers_z.append(z)
+	cell_gpot_list.append(float(ad['gpot'][i]))
+	cell_dr.append(dr)
+	cell_dz.append(dz)
+
 	rc = numpy.sqrt( r**2 + z**2 )
 	v_rad = ( r*velr + z* velz ) / rc
 
@@ -77,8 +93,8 @@ for i in range( ad['dens'].size ) :
 	#	print( 'deltav is %d but dr/texp is %d'%( deltav, dr/texp) )
 	#	print( '(vr,vz) =  ( %d, %d )'%(velr,velz) )
 
-	# only include data not reverse-shocked, with v_rad not too far below v=r/texp
-	if ( v_rad > ( rc/texp - 5e7 ) and float(ad['flff'][i]) < 0.01 ) :
+	# only include ejected material w/ sufficiently low fluff mass fraction.
+	if ( float(ad['ener'][i]) - float (ad['eint'][i]) + float(ad['gpot'][i]) > 0 and float(ad['flff'][i]) < 0.01 ) :
 		mass = float( ad['density'][i] ) * 2*numpy.pi*r*dr*dz
 		totmass += mass
 
@@ -112,6 +128,15 @@ for i in range( ad['dens'].size ) :
 
 del ad
 del ds
+
+# converting the lists to arrays
+cell_centers_r = numpy.array(cell_centers_r)
+cell_centers_z = numpy.array(cell_centers_z)
+cell_gpot_list = numpy.array(cell_gpot_list)
+cell_dr = numpy.array(cell_dr)
+cell_dz = numpy.array(cell_dz)
+
+
 avgdens = totmass / ( 4.0/3.0*numpy.pi*maxv**3*texp**3 )
 print( 'avgdens = ', avgdens )
 # now convert mass in each bin to density.  trimming to spherical
@@ -176,8 +201,28 @@ for di in range(len(dirs)) :
 		if ( leftgrid[pid-1] > 0 ) :
 			print ('skipping particle that left grid ', pindex, ' at vel ', v_rad)
 			continue
-		# skip if too far below the v = r/texp line  (in reverse shock from interaction with fluff)
-		if ( fvelr[pid-1] <= ( fr[pid-1]/texp-5e7 ) ) :
+
+		#grabbing particle positions
+		pr = fpos[pid-1][0]
+		pz = fpos[pid-1][1]
+		
+		# Find which cell contains this particle's position
+		# numpy.where() returns the global index of the cell where the particle
+		# is located. 
+		# Particle is located where the following conditions are true.
+		match = numpy.where(
+			(numpy.abs(pr - cell_centers_r) <= 0.5*cell_dr) &
+			(numpy.abs(pz - cell_centers_z) <= 0.5*cell_dz)
+		)[0]
+
+		if len(match) > 0:
+			particle_gpot = cell_gpot_list[match[0]]
+		else:
+			raise RuntimeError(
+        		f"Particle {pid} at position ({pr}, {pz}) not found in any cell!"
+    		)
+		# skip if E_kin + E_grav <= 0 (ask Alan about this?)
+		if ( 0.5*(fvel[pid-1][0]**2 + fvel[pid-1][1]**2) + particle_gpot <= 0 ):
 			continue
 		
 		# locate destination on grid
