@@ -25,7 +25,6 @@ fpos = pf['finalpositions'][:]
 fvel = pf['finalvelocities'][:]
 leftgrid = pf['leftgrid'][:]
 weights = pf['weights'][:]
-fgpot = pf['gpot'][:]
 
 # normalize weights
 sw = sum(weights)
@@ -68,18 +67,42 @@ ds = yt.load("../final_checkpoint")
 
 ad = ds.all_data()
 
+# Adding the cell centers, widths, and potential energies to later
+# be used in the particle cut
+cell_centers_x = []
+cell_centers_y = []
+cell_centers_z = []
+cell_gpot_list = []
+cell_dx = []
+cell_dy = []
+cell_dz = []
+
 # Now looping over every cell on the grid
 # This for loop cuts out the bound remnant and the fluff material from our data
 # and then sorts the remaining ejecta into velocity bins.
 
 for i in range( ad['dens'].size ) :
-	# For each iteration, we extract the cell-size and velocity of the cell.
+	# For each iteration, we extract the position, cell-size, and
+	# velocity of the cell.
+	x = float(ad['x'][i])
+	y = float(ad['y'][i])
+	z = float(ad['z'][i])
 	dx = float(ad['dx'][i])
 	dy = float(ad['dy'][i])
 	dz = float(ad['dz'][i])
 	velx = float(ad['velx'][i])
 	vely = float(ad['vely'][i])
 	velz = float(ad['velz'][i])
+
+	# Creating arrays for the cell coords, widths, and gpot to be accessed later
+	# when using the cell gpot for the particle cut.
+	cell_centers_x.append(x)
+	cell_centers_y.append(y)
+	cell_centers_z.append(z)
+	cell_gpot_list.append(float(ad['gpot'][i]))
+	cell_dx.append(dx)
+	cell_dy.append(dy)
+	cell_dz.append(dz)
 
 	#if ( dr > deltav*texp ) :
 	#	print( 'deltav is %d but dr/texp is %d'%( deltav, dr/texp) )
@@ -140,6 +163,16 @@ for i in range( ad['dens'].size ) :
 
 del ad
 del ds
+
+# converting the lists to arrays
+cell_centers_x = numpy.array(cell_centers_x)
+cell_centers_y = numpy.array(cell_centers_y)
+cell_centers_z = numpy.array(cell_centers_z)
+cell_gpot_list = numpy.array(cell_gpot_list)
+cell_dx = numpy.array(cell_dx)
+cell_dy = numpy.array(cell_dy)
+cell_dz = numpy.array(cell_dz)
+
 avgdens = totmass / ( 4.0/3.0*numpy.pi*maxv**3*texp**3 )
 print( 'avgdens = ', avgdens )
 # now convert mass in each bin to density.  trimming to spherical
@@ -220,8 +253,31 @@ for di in range(len(dirs)) :
 		if ( leftgrid[pid-1] > 0 ) :
 			print ('skipping particle that left grid ', pindex, ' at vel ', fvelr[pid-1])
 			continue
+		
+		#grabbing particle positions
+		px = fpos[pid-1][0]
+		py = fpos[pid-1][1]
+		pz = fpos[pid-1][2]
+		
+		# Find which cell contains this particle's position
+		# numpy.where() returns the global index of the cell where the particle
+		# is located. 
+		# Particle is located where the following conditions are true.
+		match = numpy.where(
+			(numpy.abs(px - cell_centers_x) <= 0.5*cell_dx) &
+			(numpy.abs(py - cell_centers_y) <= 0.5*cell_dy) &
+			(numpy.abs(pz - cell_centers_z) <= 0.5*cell_dz)
+		)[0]
+
+		if len(match) > 0:
+			particle_gpot = cell_gpot_list[match[0]]
+		else:
+			raise RuntimeError(
+        		f"Particle {pid} at position ({px}, {py}, {pz}) not found in any cell!"
+    		)
+
 		# skip if E_kin + E_grav <= 0
-		if ( 0.5*(fvel[pid-1][0]**2 + fvel[pid-1][1]**2 + fvel[pid-1][2]**2) + fgpot[pid-1] <= 0 ):
+		if ( 0.5*(fvel[pid-1][0]**2 + fvel[pid-1][1]**2 + fvel[pid-1][2]**2) + particle_gpot <= 0 ):
 			continue
 		
 		# locate destination on grid
