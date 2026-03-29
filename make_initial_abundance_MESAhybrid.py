@@ -30,7 +30,7 @@ def func_rad():
         # -----------------------------
         # Convert particle location to radius
         #rad = sqrt(r^2 + z^2)
-        f = h5py.File('../alltracks_2D.hdf5','r')
+        f = h5py.File('../alltracks_3D.hdf5','r')
 
 
         ids = f['trackids']
@@ -39,9 +39,10 @@ def func_rad():
         initpos = np.array(initpos)
         inpt = int(sys.argv[2])
         whichid = ids.index(inpt)
-        rad = initpos[whichid,0]
-        z = initpos[whichid,1]
-        r = np.sqrt((rad)**2 + (z)**2)
+        x = initpos[whichid,0]
+        y = initpos[whichid,1]
+        z = initpos[whichid,2]
+        r = np.sqrt(x**2 + y**2 + z**2)
 
         return r
 
