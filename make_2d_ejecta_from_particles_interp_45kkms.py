@@ -56,7 +56,7 @@ vx = numpy.zeros( (vgridsize, 2*vgridsize ) )
 vz = numpy.zeros( (vgridsize, 2*vgridsize ) )
 totmass = 0.0
 
-ds = yt.load("../final_checkpoint") #JM
+ds = yt.load("final_checkpoint_2D")
 
 #print( dir(ds.fields.gas) )
 
@@ -154,7 +154,7 @@ for i in range(vgridsize) :
 			ejectamassdens[i,j] = ejectamassdens[i,j] / ( 2*numpy.pi*(i+0.5)*deltav**3*texp**3 )
 
 
-fout = h5py.File('ejecta.hdf5', 'w')
+fout = h5py.File('ejecta_2D.hdf5', 'w')
 fout.create_dataset( 'rho', data=ejectamassdens, dtype='d' )
 fout.create_dataset( 'temp', data=ejectatemp, dtype='d' )
 fout.create_dataset( 'vx', data=vx, dtype='d' )
@@ -173,7 +173,7 @@ dirs = numpy.arange( 1, lastparticle, dirsize ) # 1 , lastparticle, directory si
 # nuclide set is same for all, so just take from one file
 
 
-yfile = open('../abundance_runs/run_1/final_abundances_1.dat')
+yfile = open('final_abundances_2D/final_abundances_1.dat')
 
 nnuc = int(  yfile.readline().split()[1] )
 nucZ = numpy.zeros(nnuc)
@@ -243,7 +243,7 @@ for di in range(len(dirs)) :
 
 		try: 
 			# now read the track yield data
-			yfile = open('../abundance_runs/run_%d/final_abundances_%d.dat' % (dirs[di],pids[pindex]), 'r' )
+			yfile = open('final_abundances_2D/final_abundances_%d.dat' % (pids[pindex]), 'r' )
 		except IOError:
 			print ('particle ', pindex, ' not found,  pid ', int(pids[pindex]))
 		else:
