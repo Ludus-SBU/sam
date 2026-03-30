@@ -22,7 +22,12 @@ pf = h5py.File("alltracks_2D.hdf5")
 fpos = pf['finalpositions'][:]
 fvel = pf['finalvelocities'][:]
 leftgrid = pf['leftgrid'][:]
-weights = pf['weights'][:]
+
+try:
+	weights = pf['weights'][:]
+except KeyError:
+	weights = numpy.ones(particlenum-1)
+
 
 # normalize weights
 sw = sum(weights)
