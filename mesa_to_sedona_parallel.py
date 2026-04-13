@@ -129,6 +129,10 @@ else:
 print(f"Rank {rank} will process cells {start} to {end}")
 
 for i in range(start, end) :
+
+	if ( i % 100000 == 0 ) :
+		print(f'Fluid cell {i} on rank {rank}')
+
 	# For each iteration, we extract the position, cell-size, and
 	# velocity of the cell.
 	x = float(ad['x'][i])
@@ -295,7 +299,7 @@ if rank == 0:
 					ejectamassdens[i,j,k] = ejectamassdens[i,j,k] / ( deltav**3*texp**3 )
 
 
-	fout = h5py.File('ejecta.hdf5', 'w')
+	fout = h5py.File('ejecta_3D.hdf5', 'w')
 	fout.create_dataset( 'rho', data=ejectamassdens, dtype='d' )
 	fout.create_dataset( 'temp', data=ejectatemp, dtype='d' )
 	fout.create_dataset( 'vx', data=vx, dtype='d' )
@@ -315,7 +319,7 @@ if rank == 0:
 	# nuclide set is same for all, so just take from one file
 
 
-	yfile = open('../abundance_runs/run_1/final_abundances_1.dat')
+	yfile = open('final_abundances_3D/final_abundances_1.dat')
 
 	nnuc = int(  yfile.readline().split()[1] )
 	nucZ = numpy.zeros(nnuc)
@@ -331,12 +335,15 @@ if rank == 0:
 	ejectaabund = numpy.zeros( ( 2*vgridsize, 2*vgridsize, 2*vgridsize, nnuc ) )
 	weightaccum = numpy.zeros( ( 2*vgridsize, 2*vgridsize, 2*vgridsize ) )
 
+	print('Starting particle loop over %d directories' % len(dirs))
 	for di in range(len(dirs)) :
 
 		if (di == (len(dirs)-1)):
 			pids = numpy.arange( dirs[di], lastparticle+1, 1)
 		else :
 			pids = numpy.arange( dirs[di], dirs[di]+dirsize, 1)
+
+		print('  Processing dir %d / %d (dir index %d, particles %d to %d)' % (di+1, len(dirs), dirs[di], pids[0], pids[-1]))
 		for pindex in range( pids.size ):
 
 			pid = int(pids[pindex])
@@ -391,7 +398,7 @@ if rank == 0:
 
 			try: 
 				# now read the track yield data
-				yfile = open('../abundance_runs/run_%d/final_abundances_%d.dat' % (dirs[di],pids[pindex]), 'r' )
+				yfile = open('final_abundances_3D/final_abundances_%d.dat' % (dirs[di],pids[pindex]), 'r' )
 			except IOError:
 				print ('particle ', pindex, ' not found,  pid ', int(pids[pindex]))
 			else:
@@ -497,13 +504,14 @@ if rank == 0:
 	# initially set to pure helium as a placeholder and then we loop over each element in nnuc and
 	# average the abundances of that element over all cells in our spherical shell.
 
-
+	print('Starting missing abundance interpolation')
 	for i in range(2*vgridsize) :
 		for j in range(2*vgridsize) :
 			for k in range(2*vgridsize) :
 				# now searching for if we have a cell with mass that doesn't have a particle track
 				# if this is true, we need to fill the cell via interpolation
 				if ( ( weightaccum[i,j,k] == 0.0 ) and ( ejectamassdens[i,j,k] > 1.01*avgdens*1e-20) ) :
+					print('  Interpolating cell (%d, %d)' % (i, j))
 					foundcells = list()
 					radius = 0
 					# if we haven't found any cells that have particle tracks, we keep iterating
@@ -535,8 +543,11 @@ if rank == 0:
 						for cell in foundcells :
 							ejectaabund[i,j,k,ni] += w*ejectaabund[cell[0],cell[1],cell[2],ni]
 				
+	print('Interpolation complete')
 
 	#fout = h5py.File('trial_output.hdf5', 'w')
 	fout.create_dataset( 'Z', data=nucZ, dtype='i')
 	fout.create_dataset( 'A', data=nucA, dtype='i')
 	fout.create_dataset( 'comp', data=ejectaabund, shape=ejectaabund.shape, dtype='f' )
+
+	print('All done!')
