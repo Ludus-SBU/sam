@@ -91,12 +91,6 @@ vy = numpy.zeros( (2*vgridsize, 2*vgridsize, 2*vgridsize ) )
 vz = numpy.zeros( (2*vgridsize, 2*vgridsize, 2*vgridsize ) )
 totmass = 0.0
 
-ds = yt.load("hdef_hdf5_chk_0072")
-
-#print( dir(ds.fields.gas) )
-
-ad = ds.all_data()
-
 # Adding the cell centers, widths, and potential energies to later
 # be used in the particle cut
 cell_centers_x = []
@@ -107,12 +101,59 @@ cell_dx = []
 cell_dy = []
 cell_dz = []
 
+if rank == 0:
+    ds = yt.load("hdef_hdf5_chk_0072")
+    ad = ds.all_data()
+    
+    # Extract all needed arrays on rank 0 as plain numpy arrays
+    all_x     = numpy.array(ad['x'])
+    all_y     = numpy.array(ad['y'])
+    all_z     = numpy.array(ad['z'])
+    all_dx    = numpy.array(ad['dx'])
+    all_dy    = numpy.array(ad['dy'])
+    all_dz    = numpy.array(ad['dz'])
+    all_velx  = numpy.array(ad['velx'])
+    all_vely  = numpy.array(ad['vely'])
+    all_velz  = numpy.array(ad['velz'])
+    all_ener  = numpy.array(ad['ener'])
+    all_eint  = numpy.array(ad['eint'])
+    all_gpot  = numpy.array(ad['gpot'])
+    all_flff  = numpy.array(ad['flff'])
+    all_dens  = numpy.array(ad['density'])
+    all_temp  = numpy.array(ad['temperature'])
+    
+    del ad, ds  # free memory on rank 0 before broadcast
+else:
+    all_x = all_y = all_z = None
+    all_dx = all_dy = all_dz = None
+    all_velx = all_vely = all_velz = None
+    all_ener = all_eint = all_gpot = None
+    all_flff = all_dens = all_temp = None
+
+# Broadcast all arrays to every rank
+all_x    = comm.bcast(all_x,    root=0)
+all_y    = comm.bcast(all_y,    root=0)
+all_z    = comm.bcast(all_z,    root=0)
+all_dx   = comm.bcast(all_dx,   root=0)
+all_dy   = comm.bcast(all_dy,   root=0)
+all_dz   = comm.bcast(all_dz,   root=0)
+all_velx = comm.bcast(all_velx, root=0)
+all_vely = comm.bcast(all_vely, root=0)
+all_velz = comm.bcast(all_velz, root=0)
+all_ener = comm.bcast(all_ener, root=0)
+all_eint = comm.bcast(all_eint, root=0)
+all_gpot = comm.bcast(all_gpot, root=0)
+all_flff = comm.bcast(all_flff, root=0)
+all_dens = comm.bcast(all_dens, root=0)
+all_temp = comm.bcast(all_temp, root=0)
+
+total_cells = all_x.size
+
 # Now looping over every cell on the grid
 # This for loop cuts out the bound remnant and the fluff material from our data
 # and then sorts the remaining ejecta into velocity bins.
 
 # In MPI, we now need to split the fluid cells across ranks
-total_cells = ad['dens'].size
 
 # Dividing cells evenly among ranks
 cells_per_rank = total_cells // size # This is the floor division operator
@@ -135,22 +176,22 @@ for i in range(start, end) :
 
 	# For each iteration, we extract the position, cell-size, and
 	# velocity of the cell.
-	x = float(ad['x'][i])
-	y = float(ad['y'][i])
-	z = float(ad['z'][i])
-	dx = float(ad['dx'][i])
-	dy = float(ad['dy'][i])
-	dz = float(ad['dz'][i])
-	velx = float(ad['velx'][i])
-	vely = float(ad['vely'][i])
-	velz = float(ad['velz'][i])
+	x = all_x[i]
+	y = all_y[i]
+	z = all_z[i]
+	dx = all_dx[i]
+	dy = all_dy[i]
+	dz = all_dz[i]
+	velx = all_velx[i]
+	vely = all_vely[i]
+	velz = all_velz[i]
 
 	# Creating arrays for the cell coords, widths, and gpot to be accessed later
 	# when using the cell gpot for the particle cut.
 	cell_centers_x.append(x)
 	cell_centers_y.append(y)
 	cell_centers_z.append(z)
-	cell_gpot_list.append(float(ad['gpot'][i]))
+	cell_gpot_list.append(all_gpot[i])
 	cell_dx.append(dx)
 	cell_dy.append(dy)
 	cell_dz.append(dz)
@@ -160,8 +201,8 @@ for i in range(start, end) :
 	#	print( '(vr,vz) =  ( %d, %d )'%(velr,velz) )
 
 	# only include ejected material w/ sufficiently low fluff mass fraction.
-	if ( float(ad['ener'][i]) - float (ad['eint'][i]) + float(ad['gpot'][i]) > 0 and float(ad['flff'][i]) < 0.01 ) :
-		mass = float( ad['density'][i] ) * dx * dy * dz
+	if ( all_ener[i] - all_eint[i] + all_gpot[i] > 0 and all_flff[i] < 0.01 ) :
+		mass = all_dens[i] * dx * dy * dz
 		totmass += mass
 
 		# Source grid cell may be bigger than destination grid cell, so, if so, need to use source
@@ -210,10 +251,7 @@ for i in range(start, end) :
 					# basic idea: [min(redgehi, right edge of bin) - max(redgelo, left edge of bin)] / bin_width
 					weight = ( min( xedgehi, (gridi-vgridsize+1)*deltav ) - max( xedgelo, (gridi-vgridsize)*deltav ) ) * ( min( yedgehi, (gridj-vgridsize+1)*deltav ) - max( yedgelo, (gridj-vgridsize)*deltav ) ) * ( min( zedgehi, (gridk-vgridsize+1)*deltav ) - max( zedgelo, (gridk-vgridsize)*deltav ) ) / srcdvx / srcdvy / srcdvz
 					ejectamassdens[gridi,gridj,gridk] += weight * mass
-					ejectatemp[gridi,gridj,gridk] += weight * mass * float(ad['temperature'][i])
-
-del ad
-del ds
+					ejectatemp[gridi,gridj,gridk] += weight * mass * all_temp[i]
 
 # Gather partial arrays from all ranks onto rank 0
 # First we have every rank do an MPI Gather so that messages are sent
