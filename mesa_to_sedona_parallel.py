@@ -16,14 +16,12 @@ size = comm.Get_size() # gets the total number of processors
 
 
 particlenum=1000001
-dirsize=300
 
 deltav = 500e5 #JM May need to change this
 maxv=4.5e9 #JM May need to change this
 lastparticle=particlenum
 
 print(lastparticle)
-print(dirsize)
 # get final positions and velocities for all tracks
 # Only have Rank 0 do this
 
@@ -350,10 +348,6 @@ if rank == 0:
 	print('finished density and temperature')
 
 
-	# iterate through particles
-	dirs = numpy.arange( 1, lastparticle, dirsize ) # 1 , lastparticle, directory size
-
-
 	# nuclide set is same for all, so just take from one file
 
 
@@ -373,127 +367,121 @@ if rank == 0:
 	ejectaabund = numpy.zeros( ( 2*vgridsize, 2*vgridsize, 2*vgridsize, nnuc ) )
 	weightaccum = numpy.zeros( ( 2*vgridsize, 2*vgridsize, 2*vgridsize ) )
 
-	print('Starting particle loop over %d directories' % len(dirs))
-	for di in range(len(dirs)) :
+	print('Starting particle loop over %d paricles' % lastparticle)
+	for pid in range(1, lastparticle+1) :
 
-		if (di == (len(dirs)-1)):
-			pids = numpy.arange( dirs[di], lastparticle+1, 1)
-		else :
-			pids = numpy.arange( dirs[di], dirs[di]+dirsize, 1)
+		if pid % 10000 == 0:
+			print(f"Processing particle {pid} / {lastparticle} on rank {rank}")
 
-		print('  Processing dir %d / %d (dir index %d, particles %d to %d)' % (di+1, len(dirs), dirs[di], pids[0], pids[-1]))
-		for pindex in range( pids.size ):
-
-			pid = int(pids[pindex])
-			if ( leftgrid[pid-1] > 0 ) :
-				print ('skipping particle that left grid ', pindex, ' at vel ', fvelr[pid-1])
-				continue
+		if (leftgrid[pid-1] > 0):
+			print(f"skipping particle that left grid {pid} with vel {fvelr[pid-1]}")
+			continue
 			
-			#grabbing particle positions
-			px = fpos[pid-1][0]
-			py = fpos[pid-1][1]
-			pz = fpos[pid-1][2]
-			
-			# Find which cell contains this particle's position
-			# numpy.where() returns the global index of the cell where the particle
-			# is located. 
-			# Particle is located where the following conditions are true.
-			match = numpy.where(
-				(numpy.abs(px - cell_centers_x) <= 0.5*cell_dx) &
-				(numpy.abs(py - cell_centers_y) <= 0.5*cell_dy) &
-				(numpy.abs(pz - cell_centers_z) <= 0.5*cell_dz)
-			)[0]
-
-			if len(match) > 0:
-				particle_gpot = cell_gpot_list[match[0]]
-			else:
-				raise RuntimeError(
-					f"Particle {pid} at position ({px}, {py}, {pz}) not found in any cell!"
-				)
-
-			# skip if E_kin + E_grav <= 0
-			if ( 0.5*(fvel[pid-1][0]**2 + fvel[pid-1][1]**2 + fvel[pid-1][2]**2) + particle_gpot <= 0 ):
-				continue
-			
-			# locate destination on grid
-			# want to find cell for which particle is between center of this and next cells
-			# index starts from zero for first cell
-			# but may be -1 indicating particle is in lower half of cell
-			velx = fvel[int(pids[pindex]-1)][0]
-			vely = fvel[int(pids[pindex]-1)][1]
-			velz = fvel[int(pids[pindex]-1)][2]
-			#velx = fpos[int(pids[pindex])][0] / texp
-			#vely = fpos[int(pids[pindex])][1] / texp
-			#print 'velx=', velx, ' vely=',vely
-			gridi = int( numpy.floor( ((velx+maxv)/deltav)- 0.5 ) )
-			gridj = int( numpy.floor( ((vely+maxv)/deltav)- 0.5 ) )
-			gridk = int( numpy.floor( ((velz+maxv)/deltav)- 0.5 ) )
-			#print 'gridi gridj: ', gridi, gridj
-			# weight factors for cloud in cell
-			lowweighti = (velx+maxv)/deltav - 0.5 - gridi
-			lowweightj = (vely+maxv)/deltav - 0.5 - gridj
-			lowweightk = (velz+maxv)/deltav - 0.5 - gridk
-
-			try: 
-				# now read the track yield data
-				yfile = open('final_abundances_3D/final_abundances_%d.dat' % (dirs[di],pids[pindex]), 'r' )
-			except IOError:
-				print ('particle ', pindex, ' not found,  pid ', int(pids[pindex]))
-			else:
-				py = dict()
-				# first line just lists number of nuclides
-				yfile.readline()
-				for line in yfile :
-					sl = line.split()
-					py[ sl[0] ] = float(sl[3].replace('D','E'))
-					py[ ( int(sl[1]), int(sl[1])+int(sl[2]) ) ] = float(sl[3].replace('D','E'))
-				yfile.close()
-				#print 'py[si28] = ', py['si28']
-			
-				# now add portion to grid cells : i.e. cloud-in-cell
+		#grabbing particle positions
+		px = fpos[pid-1][0]
+		py = fpos[pid-1][1]
+		pz = fpos[pid-1][2]
 		
-				# for the starting cell - let's call it (0,0,0)
-				if ( gridi >= 0 and gridi < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
-					weightaccum[gridi,gridj,gridk] += weights[pid-1]*lowweighti*lowweightj*lowweightk
-					for ni in range(nnuc) :
-						ejectaabund[gridi,gridj,gridk,ni] += weights[pid-1]*lowweighti*lowweightj*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
-				# spillover into (1,0,0)
-				if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
-					weightaccum[gridi+1,gridj,gridk] += weights[pid-1]*(1.0-lowweighti)*lowweightj*lowweightk
-					for ni in range(nnuc) :
-						ejectaabund[gridi+1,gridj,gridk,ni] += weights[pid-1]*(1.0-lowweighti)*lowweightj*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
-				# spillover into (0,1,0)
-				if ( gridi >= 0 and gridi < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
-					weightaccum[gridi,gridj+1,gridk] += weights[pid-1]*lowweighti*(1.0-lowweightj)*lowweightk
-					for ni in range(nnuc) :
-						ejectaabund[gridi,gridj+1,gridk,ni] += weights[pid-1]*lowweighti*(1.0-lowweightj)*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
-				# spillover into (0,0,1)
-				if ( gridi >= 0 and gridi < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
-					weightaccum[gridi,gridj,gridk+1] += weights[pid-1]*lowweighti*lowweightj*(1.0-lowweightk)
-					for ni in range(nnuc) :
-						ejectaabund[gridi,gridj,gridk+1,ni] += weights[pid-1]*lowweighti*lowweightj*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
-				# spillover into (1,1,0)
-				if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
-					weightaccum[gridi+1,gridj+1,gridk] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*lowweightk
-					for ni in range(nnuc) :
-						ejectaabund[gridi+1,gridj+1,gridk,ni] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
-				# spillover into (0,1,1)
-				if ( gridi >= 0 and gridi < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
-					weightaccum[gridi,gridj+1,gridk+1] += weights[pid-1]*lowweighti*(1.0-lowweightj)*(1.0-lowweightk)
-					for ni in range(nnuc) :
-						ejectaabund[gridi,gridj+1,gridk+1,ni] += weights[pid-1]*lowweighti*(1.0-lowweightj)*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
-				# spillover into (1,0,1)
-				if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
-					weightaccum[gridi+1,gridj,gridk+1] += weights[pid-1]*(1.0-lowweighti)*lowweightj*(1.0-lowweightk)
-					for ni in range(nnuc) :
-						ejectaabund[gridi+1,gridj,gridk+1,ni] += weights[pid-1]*(1.0-lowweighti)*lowweightj*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
-				# spillover into (1,1,1)
-				if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
-					weightaccum[gridi+1,gridj+1,gridk+1] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*(1.0-lowweightk)
-					for ni in range(nnuc) :
-						ejectaabund[gridi+1,gridj+1,gridk+1,ni] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
-				
-		print("finished dir ", dirs[di])
+		# Find which cell contains this particle's position
+		# numpy.where() returns the global index of the cell where the particle
+		# is located. 
+		# Particle is located where the following conditions are true.
+		match = numpy.where(
+			(numpy.abs(px - cell_centers_x) <= 0.5*cell_dx) &
+			(numpy.abs(py - cell_centers_y) <= 0.5*cell_dy) &
+			(numpy.abs(pz - cell_centers_z) <= 0.5*cell_dz)
+		)[0]
+
+		if len(match) > 0:
+			particle_gpot = cell_gpot_list[match[0]]
+		else:
+			raise RuntimeError(
+				f"Particle {pid} at position ({px}, {py}, {pz}) not found in any cell!"
+			)
+
+		# skip if E_kin + E_grav <= 0
+		if ( 0.5*(fvel[pid-1][0]**2 + fvel[pid-1][1]**2 + fvel[pid-1][2]**2) + particle_gpot <= 0 ):
+			continue
+		
+		# locate destination on grid
+		# want to find cell for which particle is between center of this and next cells
+		# index starts from zero for first cell
+		# but may be -1 indicating particle is in lower half of cell
+		velx = fvel[pid-1][0]
+		vely = fvel[pid-1][1]
+		velz = fvel[pid-1][2]
+		#velx = fpos[int(pids[pindex])][0] / texp
+		#vely = fpos[int(pids[pindex])][1] / texp
+		#print 'velx=', velx, ' vely=',vely
+		gridi = int( numpy.floor( ((velx+maxv)/deltav)- 0.5 ) )
+		gridj = int( numpy.floor( ((vely+maxv)/deltav)- 0.5 ) )
+		gridk = int( numpy.floor( ((velz+maxv)/deltav)- 0.5 ) )
+		#print 'gridi gridj: ', gridi, gridj
+		# weight factors for cloud in cell
+		lowweighti = (velx+maxv)/deltav - 0.5 - gridi
+		lowweightj = (vely+maxv)/deltav - 0.5 - gridj
+		lowweightk = (velz+maxv)/deltav - 0.5 - gridk
+
+		try: 
+			# now read the track yield data
+			yfile = open('final_abundances_3D/final_abundances_%d.dat' % pid, 'r' )
+		except IOError:
+			print ('particle ', pid, ' not found')
+		else:
+			py = dict()
+			# first line just lists number of nuclides
+			yfile.readline()
+			for line in yfile :
+				sl = line.split()
+				py[ sl[0] ] = float(sl[3].replace('D','E'))
+				py[ ( int(sl[1]), int(sl[1])+int(sl[2]) ) ] = float(sl[3].replace('D','E'))
+			yfile.close()
+			#print 'py[si28] = ', py['si28']
+		
+			# now add portion to grid cells : i.e. cloud-in-cell
+	
+			# for the starting cell - let's call it (0,0,0)
+			if ( gridi >= 0 and gridi < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
+				weightaccum[gridi,gridj,gridk] += weights[pid-1]*lowweighti*lowweightj*lowweightk
+				for ni in range(nnuc) :
+					ejectaabund[gridi,gridj,gridk,ni] += weights[pid-1]*lowweighti*lowweightj*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (1,0,0)
+			if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
+				weightaccum[gridi+1,gridj,gridk] += weights[pid-1]*(1.0-lowweighti)*lowweightj*lowweightk
+				for ni in range(nnuc) :
+					ejectaabund[gridi+1,gridj,gridk,ni] += weights[pid-1]*(1.0-lowweighti)*lowweightj*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (0,1,0)
+			if ( gridi >= 0 and gridi < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
+				weightaccum[gridi,gridj+1,gridk] += weights[pid-1]*lowweighti*(1.0-lowweightj)*lowweightk
+				for ni in range(nnuc) :
+					ejectaabund[gridi,gridj+1,gridk,ni] += weights[pid-1]*lowweighti*(1.0-lowweightj)*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (0,0,1)
+			if ( gridi >= 0 and gridi < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
+				weightaccum[gridi,gridj,gridk+1] += weights[pid-1]*lowweighti*lowweightj*(1.0-lowweightk)
+				for ni in range(nnuc) :
+					ejectaabund[gridi,gridj,gridk+1,ni] += weights[pid-1]*lowweighti*lowweightj*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (1,1,0)
+			if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk >= 0 and gridk < 2*vgridsize):
+				weightaccum[gridi+1,gridj+1,gridk] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*lowweightk
+				for ni in range(nnuc) :
+					ejectaabund[gridi+1,gridj+1,gridk,ni] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*lowweightk * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (0,1,1)
+			if ( gridi >= 0 and gridi < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
+				weightaccum[gridi,gridj+1,gridk+1] += weights[pid-1]*lowweighti*(1.0-lowweightj)*(1.0-lowweightk)
+				for ni in range(nnuc) :
+					ejectaabund[gridi,gridj+1,gridk+1,ni] += weights[pid-1]*lowweighti*(1.0-lowweightj)*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (1,0,1)
+			if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj >= 0 and gridj < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
+				weightaccum[gridi+1,gridj,gridk+1] += weights[pid-1]*(1.0-lowweighti)*lowweightj*(1.0-lowweightk)
+				for ni in range(nnuc) :
+					ejectaabund[gridi+1,gridj,gridk+1,ni] += weights[pid-1]*(1.0-lowweighti)*lowweightj*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
+			# spillover into (1,1,1)
+			if ( gridi+1 >= 0 and gridi+1 < 2*vgridsize and gridj+1 >= 0 and gridj+1 < 2*vgridsize and gridk+1 >= 0 and gridk+1 < 2*vgridsize):
+				weightaccum[gridi+1,gridj+1,gridk+1] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*(1.0-lowweightk)
+				for ni in range(nnuc) :
+					ejectaabund[gridi+1,gridj+1,gridk+1,ni] += weights[pid-1]*(1.0-lowweighti)*(1.0-lowweightj)*(1.0-lowweightk) * py[ (nucZ[ni],nucA[ni]) ]
+			
+	print("finished particle loop ")
 
 
 	# now complete averaging
